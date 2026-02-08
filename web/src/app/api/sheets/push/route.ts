@@ -117,6 +117,154 @@ function getItemField(item: Record<string, unknown>, keys: string[]) {
   return undefined;
 }
 
+function getFromNested(obj: unknown, keys: string[]): unknown {
+  if (obj === null || obj === undefined || typeof obj !== "object") return undefined;
+  const record = obj as Record<string, unknown>;
+  for (const k of keys) {
+    const v = record[k];
+    if (v === undefined || v === null) continue;
+    return v;
+  }
+  return undefined;
+}
+
+function getAddressPostalCode(item: Record<string, unknown>): string {
+  const top = toStringOrEmpty(getItemField(item, ["postalCode", "zip", "addressPostalCode", "zipCode", "postcode"])).trim();
+  if (top) return top;
+  const addr = getItemField(item, ["address"]);
+  if (addr && typeof addr === "object" && addr !== null) {
+    const fromAddr = toStringOrEmpty(getFromNested(addr, ["postalCode", "zip", "postcode", "zipCode"])).trim();
+    if (fromAddr) return fromAddr;
+  }
+  const addressStr = typeof addr === "string" ? addr : "";
+  if (addressStr) {
+    const postalMatch = addressStr.match(/\b(\d{5}(?:-\d{4})?)\b/) ?? addressStr.match(/(\d{3,}\s*\w{2,})/);
+    if (postalMatch?.[1]) return postalMatch[1].replace(/\s+/g, "").trim();
+  }
+  return "";
+}
+
+const COUNTRY_NAME_TO_CODE: Record<string, string> = {
+  australia: "AU",
+  "united states": "US",
+  "united kingdom": "GB",
+  canada: "CA",
+  germany: "DE",
+  france: "FR",
+  "new zealand": "NZ",
+  japan: "JP",
+  china: "CN",
+  india: "IN",
+  singapore: "SG",
+  malaysia: "MY",
+  indonesia: "ID",
+  philippines: "PH",
+  vietnam: "VN",
+  thailand: "TH",
+  italy: "IT",
+  spain: "ES",
+  netherlands: "NL",
+  brazil: "BR",
+  mexico: "MX",
+  "south korea": "KR",
+  "hong kong": "HK",
+};
+
+function getAddressCountryCode(item: Record<string, unknown>): string {
+  const top = toStringOrEmpty(getItemField(item, ["countryCode", "addressCountryCode", "country"])).trim();
+  if (top) {
+    if (top.length <= 3) return top.toUpperCase();
+    return COUNTRY_NAME_TO_CODE[top.toLowerCase()] ?? top.slice(0, 2).toUpperCase();
+  }
+  const addr = getItemField(item, ["address"]);
+  if (addr && typeof addr === "object" && addr !== null) {
+    const fromAddr = toStringOrEmpty(getFromNested(addr, ["countryCode", "country"])).trim();
+    if (fromAddr) {
+      if (fromAddr.length <= 3) return fromAddr.toUpperCase();
+      return COUNTRY_NAME_TO_CODE[fromAddr.toLowerCase()] ?? fromAddr.slice(0, 2).toUpperCase();
+    }
+  }
+  const addressStr = typeof addr === "string" ? addr : "";
+  if (addressStr) {
+    const parts = addressStr.split(",").map((p) => p.trim()).filter(Boolean);
+    if (parts.length > 0) {
+      const last = parts[parts.length - 1];
+      if (last.length <= 3) return last.toUpperCase();
+      return COUNTRY_NAME_TO_CODE[last.toLowerCase()] ?? last.slice(0, 2).toUpperCase();
+    }
+  }
+  return "";
+}
+
+function getListOfServices(item: Record<string, unknown>): string {
+  const parts: string[] = [];
+  const categories = getItemField(item, ["categories", "categoryName", "category", "subTitle"]);
+  if (Array.isArray(categories)) {
+    categories.forEach((c) => {
+      const s =
+        c && typeof c === "object" && "name" in (c as object)
+          ? String((c as { name?: string }).name ?? "").trim()
+          : toStringOrEmpty(c).trim();
+      if (s && !parts.includes(s)) parts.push(s);
+    });
+  } else {
+    const single = toStringOrEmpty(categories).trim();
+    if (single && !parts.includes(single)) parts.push(single);
+  }
+  const additionalInfo = getItemField(item, ["additionalInfo"]);
+  if (additionalInfo && typeof additionalInfo === "object") {
+    const obj = additionalInfo as Record<string, unknown>;
+    for (const key of Object.keys(obj)) {
+      const v = obj[key];
+      if (!Array.isArray(v)) continue;
+      for (const entry of v) {
+        if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+          for (const optionName of Object.keys(entry as object)) {
+            const val = (entry as Record<string, unknown>)[optionName];
+            if (val === true || val === "true" || val === 1) {
+              const label = optionName.trim();
+              if (label && !parts.includes(label)) parts.push(label);
+            }
+          }
+        }
+      }
+    }
+  }
+  return parts.join(" | ");
+}
+
+function computeAiAnalysis(item: Record<string, unknown>): string {
+  let score = 2;
+  const reviewsCount = Number(getItemField(item, ["reviewsCount", "reviews", "reviews_count"]) ?? 0);
+  const rating = Number(getItemField(item, ["totalScore", "rating", "score"]) ?? 0);
+  const website = toStringOrEmpty(getItemField(item, ["website", "web", "domain"])).trim();
+  const categories = getItemField(item, ["categories", "categoryName", "category"]);
+  const categoryText = Array.isArray(categories)
+    ? categories.map(toStringOrEmpty).join(" ").toLowerCase()
+    : toStringOrEmpty(categories).toLowerCase();
+  const socials = [
+    "facebook", "facebooks", "linkedIn", "linkedIns", "linkedin", "linkedins",
+    "instagram", "instagrams", "twitter", "twitters", "youtube", "youtubes", "tiktok", "tiktoks",
+  ];
+  const hasSocial = socials.some((k) => {
+    const v = getItemField(item, [k]);
+    return Array.isArray(v) ? v.length > 0 : Boolean(v);
+  });
+  if (website) score += 2;
+  if (reviewsCount >= 50) score += 2;
+  if (reviewsCount >= 200) score += 3;
+  if (rating >= 4.5) score += 1;
+  if (hasSocial) score += 1;
+  if (
+    categoryText.includes("agency") || categoryText.includes("marketing") || categoryText.includes("consult") ||
+    categoryText.includes("software") || categoryText.includes("technology") || categoryText.includes("it ") ||
+    categoryText.includes("it services") || categoryText.includes("development") || categoryText.includes("web")
+  ) score += 2;
+  if (score > 10) score = 10;
+  if (score < 0) score = 0;
+  return String(score);
+}
+
 function toOpeningHoursText(item: Record<string, unknown>) {
   const v = getItemField(item, ["openingHours", "opening_hours", "openingHoursText", "openingHoursOpenDays"]);
   if (!v) return "";
@@ -144,6 +292,25 @@ function toOpeningHoursText(item: Record<string, unknown>) {
     }
   }
   return toStringOrEmpty(v);
+}
+
+function findHeaderIndexCaseInsensitive(headers: string[], headerName: string) {
+  const want = headerName.trim().toLowerCase();
+  for (let i = 0; i < headers.length; i++) {
+    if ((headers[i] ?? "").trim().toLowerCase() === want) return i;
+  }
+  return -1;
+}
+
+function colIndexToA1(colIndex1Based: number) {
+  let x = colIndex1Based;
+  let letters = "";
+  while (x > 0) {
+    const rem = (x - 1) % 26;
+    letters = String.fromCharCode(65 + rem) + letters;
+    x = Math.floor((x - 1) / 26);
+  }
+  return letters;
 }
 
 function parseDatasetUrl(datasetUrl: string): { datasetId: string; token: string } | null {
@@ -198,11 +365,25 @@ export async function POST(req: Request) {
       );
     }
 
+    let existingUniqueIds = new Set<string>();
+    const uniqueIdIdx = findHeaderIndexCaseInsensitive(leadsHeaders, "Unique ID");
+    if (uniqueIdIdx !== -1) {
+      const colLetter = colIndexToA1(uniqueIdIdx + 1);
+      const range = `${leadsSheetName}!${colLetter}2:${colLetter}`;
+      const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range });
+      const values = resp.data.values ?? [];
+      existingUniqueIds = new Set(
+        values.map((row) => (row?.[0] ?? "").toString().trim()).filter(Boolean),
+      );
+    }
+
     const items = await getDatasetItems({ token: parsed.token, datasetId: parsed.datasetId });
     const nowStr = new Date().toLocaleString("en-AU");
     const leadRows: string[][] = items
       .map((item) => {
         const uniqueId = toStringOrEmpty(getItemField(item, ["placeId", "place_id", "id", "placeID"])).trim();
+        if (uniqueId && existingUniqueIds.has(uniqueId)) return null;
+        if (uniqueId) existingUniqueIds.add(uniqueId);
         return leadsHeaders.map((h) => {
           const header = (h ?? "").trim();
           if (!header) return "";
@@ -241,9 +422,13 @@ export async function POST(req: Request) {
             case "Address State":
               return toStringOrEmpty(getItemField(item, ["state", "region", "county"]));
             case "Address Postcode":
-              return toStringOrEmpty(getItemField(item, ["postalCode", "zipCode", "postcode"]));
+            case "Address Postal Code":
+              return getAddressPostalCode(item);
             case "Address Country":
-              return toStringOrEmpty(getItemField(item, ["country", "countryCode"]));
+            case "Address Country Code":
+              return getAddressCountryCode(item);
+            case "List of Services":
+              return getListOfServices(item);
             case "Facebook URL":
               return toFirstUrl(getItemField(item, ["facebook", "facebooks"]));
             case "LinkedIn URL":
@@ -268,12 +453,16 @@ export async function POST(req: Request) {
               return toStringOrEmpty(getItemField(item, ["searchString", "searchTerm", "keyword"]));
             case "Date First Added":
               return nowStr;
+            case "AI Analysis": {
+              const ai = computeAiAnalysis(item);
+              return ai !== "" && ai !== undefined ? ai : "0";
+            }
             default:
               return "";
           }
         });
       })
-      .filter((row): row is string[] => Array.isArray(row));
+      .filter((row): row is string[] => row !== null && Array.isArray(row));
 
     if (leadRows.length) {
       await appendRows(sheets, spreadsheetId, leadsSheetName, leadRows);

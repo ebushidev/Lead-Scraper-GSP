@@ -429,12 +429,22 @@ function PageContent() {
   }
 
   async function pushSettingsRow(rowNumber: number, datasetUrl: string) {
-    if (!settings.spreadsheetId.trim() || !settings.settingsSheetName.trim() || !settings.leadsSheetName.trim()) return;
+    if (!datasetUrl?.trim()) {
+      setCredentialMessage("No dataset URL for this row. Run the scraper first to get a dataset URL.");
+      return;
+    }
+    if (!settings.spreadsheetId.trim() || !settings.settingsSheetName.trim() || !settings.leadsSheetName.trim()) {
+      setCredentialMessage(
+        "Spreadsheet ID and both Settings and Leads tab names are required. Set them on the Dashboard.",
+      );
+      return;
+    }
     const token = getAuthTokenForCredential(getEffectiveCredential());
     if (!token) {
       setCredentialMessage("Authorize Google Sheets access first.");
       return;
     }
+    setCredentialMessage("");
     setPushingRows((prev) => ({ ...prev, [rowNumber]: true }));
     try {
       const res = await fetch("/api/sheets/push", {
@@ -449,10 +459,25 @@ function PageContent() {
           authToken: token,
         }),
       });
-      const data = await readJson<{ ok?: boolean; error?: string; message?: string }>(res);
+      const data = await readJson<{
+        ok?: boolean;
+        error?: string;
+        message?: string;
+        appended?: number;
+      }>(res);
       if (!data.ok) {
         setCredentialMessage(data.message ?? data.error ?? "Push failed.");
       } else {
+        const appended = typeof data.appended === "number" ? data.appended : 0;
+        if (appended > 0) {
+          setCredentialMessage(`Pushed ${appended} lead(s) to ${settings.leadsSheetName}.`);
+        } else if (data.message) {
+          setCredentialMessage(data.message);
+        } else {
+          setCredentialMessage(
+            "No new leads appended (dataset may be empty or all already exist).",
+          );
+        }
         await loadSettingsRows();
       }
     } catch (e) {
@@ -672,14 +697,16 @@ function PageContent() {
             <button
               type="button"
               onClick={() => {
+                if (loading) return;
                 setActiveView("leadScraper");
                 router.replace("?view=leadscraper");
               }}
+              disabled={loading}
               className={`w-full rounded-lg px-3 py-2 text-left font-medium transition ${
                 activeView === "leadScraper"
                   ? "bg-slate-900 text-white shadow-sm"
                   : "text-slate-600 hover:bg-slate-100"
-              }`}
+              } disabled:opacity-60 disabled:cursor-not-allowed`}
             >
               <FontAwesomeIcon icon={faBolt} className="mr-2 h-4 w-4" />
               Dashboard
@@ -687,14 +714,16 @@ function PageContent() {
             <button
               type="button"
               onClick={() => {
+                if (loading) return;
                 setActiveView("googleSheet");
                 router.replace("?view=googlesheet");
               }}
+              disabled={loading}
               className={`w-full rounded-lg px-3 py-2 text-left font-medium transition ${
                 activeView === "googleSheet"
                   ? "bg-slate-900 text-white shadow-sm"
                   : "text-slate-600 hover:bg-slate-100"
-              }`}
+              } disabled:opacity-60 disabled:cursor-not-allowed`}
             >
               <FontAwesomeIcon icon={faTable} className="mr-2 h-4 w-4" />
               Google Sheet
@@ -1236,6 +1265,11 @@ function PageContent() {
                 <p className="mt-2 text-sm text-slate-600">
                   Authorize access, then review available tabs in your spreadsheet.
                 </p>
+                {credentialMessage ? (
+                  <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {credentialMessage}
+                  </div>
+                ) : null}
 
                 <div className="mt-6 space-y-4">
                   {!credentialsLoading &&
@@ -1246,11 +1280,13 @@ function PageContent() {
                       </div>
                       <button
                         type="button"
-                        className="inline-flex h-10 items-center justify-center rounded-xl bg-slate-900 px-4 text-sm font-medium text-white shadow-sm hover:bg-slate-800"
+                        className="inline-flex h-10 items-center justify-center rounded-xl bg-slate-900 px-4 text-sm font-medium text-white shadow-sm hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed"
                         onClick={() => {
+                          if (loading) return;
                           setActiveView("leadScraper");
                           router.replace("?view=leadscraper");
                         }}
+                        disabled={loading}
                       >
                         Go to Dashboard
                       </button>
@@ -1276,9 +1312,13 @@ function PageContent() {
                             {tabsLoading ? "Loading tabs…" : "Refresh tabs"}
                           </button>
                           {tabsAuthUrl ? (
-                            <a className="text-sm text-slate-700 underline" href={tabsAuthUrl}>
-                              Authorize to load tabs
-                            </a>
+                            loading ? (
+                              <span className="text-sm text-slate-400 cursor-not-allowed">Authorize to load tabs</span>
+                            ) : (
+                              <a className="text-sm text-slate-700 underline" href={tabsAuthUrl}>
+                                Authorize to load tabs
+                              </a>
+                            )
                           ) : null}
                         </div>
                         {tabsResult && !isOkTabsResult(tabsResult) ? (
