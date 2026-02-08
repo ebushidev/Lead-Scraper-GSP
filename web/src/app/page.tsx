@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -102,7 +102,7 @@ function getViewFromSearch(params: URLSearchParams | null) {
   return "leadScraper";
 }
 
-export default function Home() {
+function PageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialView = useMemo(() => getViewFromSearch(searchParams), [searchParams]);
@@ -1391,5 +1391,13 @@ export default function Home() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={null}>
+      <PageContent />
+    </Suspense>
   );
 }
