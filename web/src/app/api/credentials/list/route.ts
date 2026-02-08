@@ -1,16 +1,15 @@
 import { NextResponse } from "next/server";
 import { promises as fs } from "fs";
-import path from "path";
+
+import { getCredentialsDirPath } from "@/lib/googleAuth";
 
 export const runtime = "nodejs";
-
-const CREDENTIALS_DIR = path.resolve(process.cwd(), "..", "credentials");
 
 export async function GET() {
   try {
     let files: string[] = [];
     try {
-      const entries = await fs.readdir(CREDENTIALS_DIR, { withFileTypes: true });
+      const entries = await fs.readdir(getCredentialsDirPath(), { withFileTypes: true });
       files = entries.filter((e) => e.isFile() && e.name.endsWith(".json")).map((e) => e.name);
     } catch {
       files = [];

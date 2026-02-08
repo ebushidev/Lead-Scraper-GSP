@@ -23,12 +23,19 @@ function getRepoRootPath() {
   return path.resolve(process.cwd(), "..");
 }
 
-function getCredentialsDirPath() {
-  // Store credentials at repo root.
-  return path.resolve(getRepoRootPath(), "credentials");
+function getWritableBaseDir() {
+  if (process.env.CREDENTIALS_DIR) return path.resolve(process.env.CREDENTIALS_DIR);
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    return "/tmp";
+  }
+  return getRepoRootPath();
 }
 
-function getCredentialsPath(selectedFilename?: string) {
+export function getCredentialsDirPath() {
+  return path.resolve(getWritableBaseDir(), "credentials");
+}
+
+export function getCredentialsPath(selectedFilename?: string) {
   if (selectedFilename) {
     return path.join(getCredentialsDirPath(), selectedFilename);
   }
@@ -48,7 +55,7 @@ function getTokenPath(selectedFilename?: string) {
   if (process.env.GOOGLE_OAUTH_TOKEN_PATH) {
     return path.resolve(process.env.GOOGLE_OAUTH_TOKEN_PATH);
   }
-  const tokensDir = path.resolve(getRepoRootPath(), "tokens");
+  const tokensDir = path.resolve(getWritableBaseDir(), "tokens");
   if (!fs.existsSync(tokensDir)) {
     fs.mkdirSync(tokensDir, { recursive: true });
   }

@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server";
 import { promises as fs } from "fs";
-import path from "path";
 
-import { getTokenPathForCredential } from "@/lib/googleAuth";
+import { getCredentialsDirPath, getTokenPathForCredential } from "@/lib/googleAuth";
 
 export const runtime = "nodejs";
-
-const CREDENTIALS_DIR = path.resolve(process.cwd(), "..", "credentials");
 
 type DeleteBody = {
   file?: string;
@@ -27,7 +24,7 @@ export async function POST(req: Request) {
     }
 
     const safeName = file.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const targetPath = path.join(CREDENTIALS_DIR, safeName);
+    const targetPath = `${getCredentialsDirPath()}/${safeName}`;
     await fs.unlink(targetPath);
 
     const tokenPath = getTokenPathForCredential(safeName);

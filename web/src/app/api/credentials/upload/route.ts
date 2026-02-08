@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import { promises as fs } from "fs";
-import path from "path";
+
+import { getCredentialsDirPath } from "@/lib/googleAuth";
 
 export const runtime = "nodejs";
-
-const CREDENTIALS_DIR = path.resolve(process.cwd(), "..", "credentials");
 
 export async function POST(req: Request) {
   try {
@@ -27,9 +26,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "invalid_json", message: "Invalid JSON file." }, { status: 400 });
     }
 
-    await fs.mkdir(CREDENTIALS_DIR, { recursive: true });
+    const credentialsDir = getCredentialsDirPath();
+    await fs.mkdir(credentialsDir, { recursive: true });
     const safeName = originalName.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const targetPath = path.join(CREDENTIALS_DIR, safeName);
+    const targetPath = `${credentialsDir}/${safeName}`;
     await fs.writeFile(targetPath, content, "utf8");
 
     return NextResponse.json({ ok: true, file: safeName });
