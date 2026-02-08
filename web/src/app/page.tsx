@@ -732,16 +732,17 @@ function PageContent() {
                       <div className="space-y-2 mb-4">
                         <label className="text-sm font-medium text-slate-700 mb-2 block">Spreadsheet ID</label>
                         <input
-                          className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm shadow-sm focus-visible:border-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/10"
+                          className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm shadow-sm focus-visible:border-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/10 disabled:opacity-60"
                           value={settings.spreadsheetId}
                           onChange={(e) => setSettings((s) => ({ ...s, spreadsheetId: e.target.value }))}
                           placeholder="Paste spreadsheet ID"
+                          disabled={loading}
                         />
                         <div className="flex items-center gap-3">
                           <button
                             className="inline-flex h-8 items-center justify-center rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60"
                             onClick={loadTabs}
-                            disabled={tabsLoading || !settings.spreadsheetId.trim()}
+                            disabled={loading || tabsLoading || !settings.spreadsheetId.trim()}
                           >
                             <FontAwesomeIcon icon={faRotate} className="mr-1.5 h-3 w-3" />
                             {tabsLoading ? "Loading tabs…" : "Refresh tabs"}
@@ -786,23 +787,22 @@ function PageContent() {
                                 <label className="text-sm font-medium text-slate-700">Settings</label>
                               <a
                                 className={`inline-flex h-7 items-center justify-center rounded-md border border-slate-300 bg-white px-2 text-[11px] font-medium text-slate-700 shadow-sm ${
-                                    settings.spreadsheetId.trim()
-                                      ? "hover:bg-slate-50"
-                                      : "cursor-not-allowed opacity-60"
-                                  }`}
-                                  href={buildSheetTabUrl(settings.settingsSheetName, settingsTabInfo?.sheetId)}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  aria-disabled={!settings.spreadsheetId.trim()}
-                                >
+                                  settings.spreadsheetId.trim() && !loading ? "hover:bg-slate-50" : "cursor-not-allowed opacity-60"
+                                }`}
+                                href={loading ? undefined : buildSheetTabUrl(settings.settingsSheetName, settingsTabInfo?.sheetId)}
+                                target="_blank"
+                                rel="noreferrer"
+                                aria-disabled={!settings.spreadsheetId.trim() || loading}
+                              >
                                 <FontAwesomeIcon icon={faArrowUpRightFromSquare} className="mr-1.5 h-3 w-3" />
-                                  View
-                                </a>
+                                View
+                              </a>
                               </div>
                               <select
-                                className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm shadow-sm focus-visible:border-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/10"
+                                className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm shadow-sm focus-visible:border-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/10 disabled:opacity-60"
                                 value={settings.settingsSheetName}
                                 onChange={(e) => setSettings((s) => ({ ...s, settingsSheetName: e.target.value }))}
+                                disabled={loading}
                               >
                                 {tabs.length ? (
                                   tabs.map((t) => (
@@ -827,23 +827,22 @@ function PageContent() {
                                 <label className="text-sm font-medium text-slate-700">Leads</label>
                               <a
                                 className={`inline-flex h-7 items-center justify-center rounded-md border border-slate-300 bg-white px-2 text-[11px] font-medium text-slate-700 shadow-sm ${
-                                    settings.spreadsheetId.trim()
-                                      ? "hover:bg-slate-50"
-                                      : "cursor-not-allowed opacity-60"
-                                  }`}
-                                  href={buildSheetTabUrl(settings.leadsSheetName, leadsTabInfo?.sheetId)}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  aria-disabled={!settings.spreadsheetId.trim()}
-                                >
+                                  settings.spreadsheetId.trim() && !loading ? "hover:bg-slate-50" : "cursor-not-allowed opacity-60"
+                                }`}
+                                href={loading ? undefined : buildSheetTabUrl(settings.leadsSheetName, leadsTabInfo?.sheetId)}
+                                target="_blank"
+                                rel="noreferrer"
+                                aria-disabled={!settings.spreadsheetId.trim() || loading}
+                              >
                                 <FontAwesomeIcon icon={faArrowUpRightFromSquare} className="mr-1.5 h-3 w-3" />
-                                  View
-                                </a>
+                                View
+                              </a>
                               </div>
                               <select
-                                className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm shadow-sm focus-visible:border-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/10"
+                                className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm shadow-sm focus-visible:border-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/10 disabled:opacity-60"
                                 value={settings.leadsSheetName}
                                 onChange={(e) => setSettings((s) => ({ ...s, leadsSheetName: e.target.value }))}
+                                disabled={loading}
                               >
                                 {tabs.length ? (
                                   tabs.map((t) => (
@@ -871,7 +870,7 @@ function PageContent() {
                                 type="button"
                                 className="inline-flex h-8 items-center justify-center rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60"
                                 onClick={loadScrapedRows}
-                                disabled={!settings.spreadsheetId.trim() || scrapedRowsLoading}
+                                disabled={loading || !settings.spreadsheetId.trim() || scrapedRowsLoading}
                               >
                                 <FontAwesomeIcon icon={faRotate} className="mr-1.5 h-3 w-3" />
                                 {scrapedRowsLoading ? "Refreshing…" : "Refresh rows"}
@@ -881,7 +880,7 @@ function PageContent() {
                               <div className="space-y-1">
                                 <div className="text-xs text-slate-600">Start row</div>
                                 <select
-                                  className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm shadow-sm focus-visible:border-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/10"
+                                  className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm shadow-sm focus-visible:border-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/10 disabled:opacity-60"
                                   value={settings.startRow}
                                   onChange={(e) => {
                                     const v = Number(e.target.value);
@@ -891,7 +890,7 @@ function PageContent() {
                                       endRow: Math.max(v, s.endRow),
                                     }));
                                   }}
-                                  disabled={!availableRows.length}
+                                  disabled={loading || !availableRows.length}
                                 >
                                   {availableRows.map((r) => (
                                     <option key={r} value={r}>
@@ -904,10 +903,10 @@ function PageContent() {
                               <div className="space-y-1">
                                 <div className="text-xs text-slate-600">End row</div>
                                 <select
-                                  className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm shadow-sm focus-visible:border-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/10"
+                                  className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm shadow-sm focus-visible:border-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/10 disabled:opacity-60"
                                   value={settings.endRow}
                                   onChange={(e) => setSettings((s) => ({ ...s, endRow: Number(e.target.value) }))}
-                                  disabled={!availableRows.length}
+                                  disabled={loading || !availableRows.length}
                                 >
                                   {availableRows.filter((r) => r >= settings.startRow).map((r) => (
                                     <option key={r} value={r}>
@@ -959,12 +958,13 @@ function PageContent() {
                             </div>
                           ) : credentialsFiles.length ? (
                             credentialsFiles.map((f) => (
-                              <label key={f} className="flex items-center justify-between gap-2 text-sm text-slate-700">
+                              <label key={f} className={`flex items-center justify-between gap-2 text-sm text-slate-700 ${loading ? "cursor-not-allowed opacity-60" : ""}`}>
                                 <span className="flex items-center gap-2">
                                   <input
                                     type="checkbox"
                                     checked={selectedCredential === f}
                                     onChange={() => setSelectedCredential(f)}
+                                    disabled={loading}
                                   />
                                   {f}
                                 </span>
@@ -979,13 +979,14 @@ function PageContent() {
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <label className="inline-flex h-8 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-2.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50">
+                        <label className={`inline-flex h-8 items-center justify-center rounded-lg border border-slate-300 bg-white px-2.5 text-[11px] font-medium text-slate-700 shadow-sm ${loading ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-slate-50"}`}>
                           <FontAwesomeIcon icon={faUpload} className="mr-1.5 h-3 w-3" />
                           Upload JSON
                           <input
                             type="file"
                             accept=".json,application/json"
                             className="hidden"
+                            disabled={loading}
                             onChange={(e) => {
                               const file = e.target.files?.[0];
                               if (file) void uploadCredentialFile(file);
@@ -1019,7 +1020,7 @@ function PageContent() {
                               setCredentialMessage(data.message ?? data.error ?? "Authorization failed.");
                             }
                           }}
-                          disabled={!selectedCredential}
+                          disabled={loading || !selectedCredential}
                         >
                           <FontAwesomeIcon icon={faKey} className="mr-1.5 h-3 w-3" />
                           {selectedCredential === activeCredential ? "Reauthorize Google" : "Authorize Google"}
@@ -1032,7 +1033,7 @@ function PageContent() {
                             setConfirmDeleteName(selectedCredential);
                             setConfirmDeleteOpen(true);
                           }}
-                          disabled={!selectedCredential}
+                          disabled={loading || !selectedCredential}
                         >
                           <FontAwesomeIcon icon={faTrash} className="mr-1.5 h-3 w-3" />
                           Delete
@@ -1259,16 +1260,17 @@ function PageContent() {
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-slate-700">Spreadsheet ID</label>
                         <input
-                          className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm shadow-sm focus-visible:border-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/10"
+                          className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm shadow-sm focus-visible:border-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/10 disabled:opacity-60"
                           value={settings.spreadsheetId}
                           onChange={(e) => setSettings((s) => ({ ...s, spreadsheetId: e.target.value }))}
                           placeholder="Paste spreadsheet ID"
+                          disabled={loading}
                         />
                         <div className="flex items-center gap-3">
                           <button
                             className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60"
                             onClick={loadTabs}
-                            disabled={tabsLoading || !settings.spreadsheetId.trim()}
+                            disabled={loading || tabsLoading || !settings.spreadsheetId.trim()}
                           >
                             <FontAwesomeIcon icon={faRotate} className="mr-2 h-3.5 w-3.5" />
                             {tabsLoading ? "Loading tabs…" : "Refresh tabs"}
@@ -1323,12 +1325,12 @@ function PageContent() {
                                 <button
                                   type="button"
                                   className={`inline-flex h-9 items-center justify-center rounded-lg px-3 text-xs font-medium ${
-                                    settings.spreadsheetId.trim()
+                                    settings.spreadsheetId.trim() && !loading
                                       ? "bg-slate-900 text-white hover:bg-slate-800"
                                       : "cursor-not-allowed bg-slate-200 text-slate-500"
                                   }`}
                                   onClick={() => {
-                                    if (!settings.spreadsheetId.trim()) return;
+                                    if (!settings.spreadsheetId.trim() || loading) return;
                                     if (tab.title !== settings.settingsSheetName) {
                                       window.open(buildSheetTabUrl(tab.title, tab.sheetId), "_blank", "noreferrer");
                                       return;
@@ -1338,7 +1340,7 @@ function PageContent() {
                                       void loadSettingsRows();
                                     }
                                   }}
-                                  disabled={!settings.spreadsheetId.trim()}
+                                  disabled={loading || !settings.spreadsheetId.trim()}
                                 >
                                   <FontAwesomeIcon icon={faArrowUpRightFromSquare} className="mr-1.5 h-3 w-3" />
                                   {tab.title === settings.settingsSheetName
@@ -1403,7 +1405,7 @@ function PageContent() {
                                               <button
                                                 type="button"
                                                 className="inline-flex h-8 items-center justify-center rounded-lg bg-emerald-600 px-3 text-[11px] font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60"
-                                                disabled={!row.datasetUrl || pushingRows[row.rowNumber]}
+                                                disabled={loading || !row.datasetUrl || pushingRows[row.rowNumber]}
                                                 onClick={() => void pushSettingsRow(row.rowNumber, row.datasetUrl)}
                                               >
                                                 {pushingRows[row.rowNumber] ? "Pushing…" : "Push"}
