@@ -1,0 +1,7 @@
+token*
+tokens/
+credentials/
+
+web/node_modules/
+web/.next/
+web/.env.local
