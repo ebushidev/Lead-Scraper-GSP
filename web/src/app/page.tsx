@@ -163,12 +163,10 @@ function PageContent() {
   }, []);
 
   useEffect(() => {
-    if (typeof document === "undefined") return;
-    const cookie = document.cookie ?? "";
-    const match = cookie.match(/(?:^|; )google_cred_active=([^;]+)/);
-    const cred = match ? decodeURIComponent(match[1]) : "";
-    setActiveCredential(cred);
-    setSelectedCredential(cred);
+    if (typeof window === "undefined") return;
+    const active = window.localStorage.getItem("leadScraperActiveCredential") ?? "";
+    setActiveCredential(active);
+    setSelectedCredential(active);
   }, []);
 
   useEffect(() => {
@@ -180,10 +178,48 @@ function PageContent() {
     void loadCredentialsList();
   }, []);
 
+  function getStoredCredentials(): Record<string, string> {
+    if (typeof window === "undefined") return {};
+    try {
+      const raw = window.localStorage.getItem("leadScraperCredentials");
+      return raw ? (JSON.parse(raw) as Record<string, string>) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function setStoredCredentials(entries: Record<string, string>) {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("leadScraperCredentials", JSON.stringify(entries));
+  }
+
+  function getAuthTokenForCredential(name: string) {
+    if (!name || typeof window === "undefined") return null;
+    const raw = window.localStorage.getItem(`leadScraperToken:${name}`);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+
+  function getEffectiveCredential() {
+    return selectedCredential || activeCredential;
+  }
+
   useEffect(() => {
     const handle = window.setTimeout(() => setMessageLogLoading(false), 800);
     return () => window.clearTimeout(handle);
   }, []);
+
+  useEffect(() => {
+    if (!settings.spreadsheetId.trim()) return;
+    const token = getAuthTokenForCredential(getEffectiveCredential());
+    if (!token) return;
+    void loadTabs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.spreadsheetId, activeCredential, selectedCredential]);
 
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -265,10 +301,15 @@ function PageContent() {
     setTabsLoading(true);
     setTabsResult(null);
     try {
+      const token = getAuthTokenForCredential(getEffectiveCredential());
+      if (!token) {
+        setTabsResult({ error: "not_authorized", message: "Authorize Google Sheets access first." });
+        return;
+      }
       const res = await fetch("/api/sheets/tabs", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ spreadsheetId: settings.spreadsheetId }),
+        body: JSON.stringify({ spreadsheetId: settings.spreadsheetId, authToken: token }),
       });
       const data = await readJson<TabsResult>(res);
       setTabsResult(data);
@@ -286,13 +327,8 @@ function PageContent() {
     setCredentialsLoading(true);
     setCredentialMessage("");
     try {
-      const res = await fetch("/api/credentials/list");
-      const data = (await readJson<CredentialsListResult>(res)) as CredentialsListResult;
-      if (isOkCredentialsListResult(data)) {
-        setCredentialsFiles(data.files);
-      } else {
-        setCredentialMessage("Unable to load credentials.");
-      }
+      const entries = getStoredCredentials();
+      setCredentialsFiles(Object.keys(entries));
     } catch (e) {
       setCredentialMessage(String(e));
     } finally {
@@ -302,18 +338,16 @@ function PageContent() {
 
   async function uploadCredentialFile(file: File) {
     setCredentialMessage("");
-    const form = new FormData();
-    form.append("file", file);
     try {
-      const res = await fetch("/api/credentials/upload", { method: "POST", body: form });
-      const data = await readJson<{ ok?: boolean; file?: string; error?: string; message?: string }>(res);
-      if (data.ok && data.file) {
-        await loadCredentialsList();
-        setSelectedCredential(data.file);
-        setCredentialMessage("Credential uploaded. Please authorize.");
-      } else {
-        setCredentialMessage(data.message ?? data.error ?? "Upload failed.");
-      }
+      const content = await file.text();
+      JSON.parse(content);
+      const safeName = (file.name ?? "credentials.json").replace(/[^a-zA-Z0-9._-]/g, "_");
+      const entries = getStoredCredentials();
+      entries[safeName] = content;
+      setStoredCredentials(entries);
+      await loadCredentialsList();
+      setSelectedCredential(safeName);
+      setCredentialMessage("Credential uploaded. Please authorize.");
     } catch (e) {
       setCredentialMessage(String(e));
     }
@@ -322,19 +356,17 @@ function PageContent() {
   async function deleteCredentialFile(file: string) {
     setCredentialMessage("");
     try {
-      const res = await fetch("/api/credentials/delete", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ file }),
-      });
-      const data = await readJson<{ ok?: boolean; error?: string; message?: string }>(res);
-      if (data.ok) {
-        await loadCredentialsList();
-        if (selectedCredential === file) setSelectedCredential("");
-        setCredentialMessage("Credential deleted.");
-      } else {
-        setCredentialMessage(data.message ?? data.error ?? "Delete failed.");
+      const entries = getStoredCredentials();
+      delete entries[file];
+      setStoredCredentials(entries);
+      window.localStorage.removeItem(`leadScraperToken:${file}`);
+      if (selectedCredential === file) setSelectedCredential("");
+      if (activeCredential === file) {
+        setActiveCredential("");
+        window.localStorage.removeItem("leadScraperActiveCredential");
       }
+      await loadCredentialsList();
+      setCredentialMessage("Credential deleted.");
     } catch (e) {
       setCredentialMessage(String(e));
     }
@@ -343,6 +375,11 @@ function PageContent() {
     setScrapedRowsLoading(true);
     setScrapedRowsResult(null);
     try {
+      const token = getAuthTokenForCredential(getEffectiveCredential());
+      if (!token) {
+        setScrapedRowsResult({ error: "not_authorized", message: "Authorize Google Sheets access first." });
+        return;
+      }
       const res = await fetch("/api/sheets/scraped-rows", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -350,6 +387,7 @@ function PageContent() {
           spreadsheetId: settings.spreadsheetId,
           sheetName: settings.settingsSheetName,
           scrapedHeader: "Scraped",
+          authToken: token,
         }),
       });
       const data = await readJson<ScrapedRowsResult>(res);
@@ -367,12 +405,18 @@ function PageContent() {
   async function loadSettingsRows() {
     setSettingsRowsLoading(true);
     try {
+      const token = getAuthTokenForCredential(getEffectiveCredential());
+      if (!token) {
+        setSettingsRows({ error: "not_authorized", message: "Authorize Google Sheets access first." });
+        return;
+      }
       const res = await fetch("/api/sheets/settings-rows", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           spreadsheetId: settings.spreadsheetId,
           sheetName: settings.settingsSheetName,
+          authToken: token,
         }),
       });
       const data = await readJson<SettingsRowsResult>(res);
@@ -386,6 +430,11 @@ function PageContent() {
 
   async function pushSettingsRow(rowNumber: number, datasetUrl: string) {
     if (!settings.spreadsheetId.trim() || !settings.settingsSheetName.trim() || !settings.leadsSheetName.trim()) return;
+    const token = getAuthTokenForCredential(getEffectiveCredential());
+    if (!token) {
+      setCredentialMessage("Authorize Google Sheets access first.");
+      return;
+    }
     setPushingRows((prev) => ({ ...prev, [rowNumber]: true }));
     try {
       const res = await fetch("/api/sheets/push", {
@@ -397,6 +446,7 @@ function PageContent() {
           leadsSheetName: settings.leadsSheetName,
           rowNumber,
           datasetUrl,
+          authToken: token,
         }),
       });
       const data = await readJson<{ ok?: boolean; error?: string; message?: string }>(res);
@@ -508,10 +558,19 @@ function PageContent() {
     if (stepInFlightRef.current) return;
     stepInFlightRef.current = true;
     try {
+      const token = getAuthTokenForCredential(getEffectiveCredential());
+      if (!token) {
+        setResult({ error: "not_authorized", message: "Authorize Google Sheets access first." });
+        stopPolling();
+        setLoading(false);
+        setCanceling(false);
+        setRunId(null);
+        return;
+      }
       const res = await fetch("/api/run/step", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ runId: activeRunId }),
+        body: JSON.stringify({ runId: activeRunId, authToken: token }),
       });
       const data = await readJson<RunResult>(res);
       if (!isOkResult(data) && data.error === "no_active_run") {
@@ -553,6 +612,12 @@ function PageContent() {
     setRunId(null);
     stopPolling();
     try {
+      const token = getAuthTokenForCredential(getEffectiveCredential());
+      if (!token) {
+        setResult({ error: "not_authorized", message: "Authorize Google Sheets access first." });
+        setLoading(false);
+        return;
+      }
       const res = await fetch("/api/run/start", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -562,6 +627,7 @@ function PageContent() {
           leadsSheetName: settings.leadsSheetName,
           startRow: settings.startRow,
           endRow: settings.endRow,
+          authToken: token,
         }),
       });
       const data = await readJson<RunResult>(res);
@@ -662,7 +728,7 @@ function PageContent() {
                           <div className="skeleton h-11 w-full" />
                         </div>
                       </div>
-                    ) : canShowSheetConfig ? (
+                    ) : (
                       <div className="space-y-2 mb-4">
                         <label className="text-sm font-medium text-slate-700 mb-2 block">Spreadsheet ID</label>
                         <input
@@ -680,11 +746,6 @@ function PageContent() {
                             <FontAwesomeIcon icon={faRotate} className="mr-1.5 h-3 w-3" />
                             {tabsLoading ? "Loading tabs…" : "Refresh tabs"}
                           </button>
-                          {tabsAuthUrl ? (
-                            <a className="text-sm text-slate-700 underline" href={tabsAuthUrl}>
-                              Authorize to load tabs
-                            </a>
-                          ) : null}
                         </div>
                         {tabsResult && !isOkTabsResult(tabsResult) ? (
                           <div className="text-xs text-slate-600">
@@ -693,7 +754,7 @@ function PageContent() {
                           </div>
                         ) : null}
                       </div>
-                    ) : null}
+                    )}
 
                     {canShowSheetConfig ? (
                       tabsLoading ? (
@@ -871,7 +932,11 @@ function PageContent() {
                           </div>
                         </>
                       )
-                    ) : null}
+                    ) : (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                        Select a credential and authorize Google to load Settings and Leads fields.
+                      </div>
+                    )}
                   </div>
 
                   <div className="order-1 flex h-full flex-col space-y-2">
@@ -931,10 +996,28 @@ function PageContent() {
                         <button
                           type="button"
                           className="inline-flex h-8 items-center justify-center rounded-lg bg-slate-900 px-2.5 text-[11px] font-medium text-white shadow-sm hover:bg-slate-800 disabled:opacity-60"
-                          onClick={() => {
+                          onClick={async () => {
                             if (!selectedCredential) return;
-                            const cred = `?cred=${encodeURIComponent(selectedCredential)}`;
-                            window.location.href = `/api/auth/start${cred}`;
+                            const entries = getStoredCredentials();
+                            const credentialsJson = entries[selectedCredential];
+                            if (!credentialsJson) {
+                              setCredentialMessage("Missing credentials JSON. Upload again.");
+                              return;
+                            }
+                            const res = await fetch("/api/auth/start", {
+                              method: "POST",
+                              headers: { "content-type": "application/json" },
+                              body: JSON.stringify({
+                                credentialsJson,
+                                credentialName: selectedCredential,
+                              }),
+                            });
+                            const data = await readJson<{ ok?: boolean; authUrl?: string; error?: string; message?: string }>(res);
+                            if (data.ok && data.authUrl) {
+                              window.location.href = data.authUrl;
+                            } else {
+                              setCredentialMessage(data.message ?? data.error ?? "Authorization failed.");
+                            }
                           }}
                           disabled={!selectedCredential}
                         >
@@ -1023,6 +1106,10 @@ function PageContent() {
                             </div>
                             <div>
                               <span className="font-medium">Started:</span> {result.startedAt}
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-slate-600">
+                              <span className="inline-flex h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                              <span>Working…</span>
                             </div>
                             {result.perRow.length ? (
                               <div className="rounded-xl border border-slate-200 bg-white p-3">

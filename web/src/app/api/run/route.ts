@@ -8,7 +8,7 @@ import {
   waitForRunToFinish,
 } from "@/lib/apify";
 import { runState } from "./runState";
-import { getAuthorizedGoogleAuthOrAuthUrl } from "@/lib/googleAuth";
+import { getAuthorizedGoogleAuthFromToken } from "@/lib/googleAuth";
 import { google, sheets_v4 } from "googleapis";
 import {
   DEFAULT_NICHE_SETTINGS_TAB,
@@ -34,6 +34,7 @@ type RunBody = {
   apifyTokenHeader?: string;
   startRow?: number;
   endRow?: number;
+  authToken?: Record<string, unknown>;
 };
 
 function getFromRowCaseInsensitive(row: Record<string, string>, headerName: string) {
@@ -274,24 +275,20 @@ export async function POST(req: Request) {
     runState.activeRunId = null;
     runState.activeToken = null;
 
-    const { auth, authUrl } = getAuthorizedGoogleAuthOrAuthUrl();
-    if (!auth) {
-      return NextResponse.json(
-        {
-          error: "not_authorized",
-          message: "Authorize Google Sheets access first.",
-          authUrl,
-        },
-        { status: 401 },
-      );
-    }
-
     let body: RunBody = {};
     try {
       body = (await req.json()) as RunBody;
     } catch {
       body = {};
     }
+
+    if (!body.authToken || typeof body.authToken !== "object") {
+      return NextResponse.json(
+        { error: "not_authorized", message: "Authorize Google Sheets access first." },
+        { status: 401 },
+      );
+    }
+    const auth = getAuthorizedGoogleAuthFromToken(body.authToken);
 
     const spreadsheetId = (body.spreadsheetId ?? process.env.SPREADSHEET_ID ?? DEFAULT_SPREADSHEET_ID).trim();
     const settingsSheetName = (

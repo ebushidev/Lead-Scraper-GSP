@@ -1,6 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
-
 import { google } from "googleapis";
 
 const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
@@ -18,70 +15,24 @@ type CredentialsFile = {
   };
 };
 
-function getRepoRootPath() {
-  // Next.js runs with CWD = web/ by default. Credentials are kept in repo root.
-  return path.resolve(process.cwd(), "..");
-}
-
-function getWritableBaseDir() {
-  if (process.env.CREDENTIALS_DIR) return path.resolve(process.env.CREDENTIALS_DIR);
-  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
-    return "/tmp";
-  }
-  return getRepoRootPath();
-}
-
-export function getCredentialsDirPath() {
-  return path.resolve(getWritableBaseDir(), "credentials");
-}
-
-export function getCredentialsPath(selectedFilename?: string) {
-  if (selectedFilename) {
-    return path.join(getCredentialsDirPath(), selectedFilename);
-  }
-  return process.env.GOOGLE_OAUTH_CREDENTIALS_PATH
-    ? path.resolve(process.env.GOOGLE_OAUTH_CREDENTIALS_PATH)
-    : path.join(getCredentialsDirPath(), "credentials.json");
-}
-
-function safeTokenSuffix(selectedFilename?: string) {
-  if (!selectedFilename) return "";
-  const base = path.parse(selectedFilename).name;
-  const normalized = base.replace(/[^a-z0-9_-]+/gi, "_");
-  return normalized ? `-${normalized}` : "";
-}
-
-function getTokenPath(selectedFilename?: string) {
-  if (process.env.GOOGLE_OAUTH_TOKEN_PATH) {
-    return path.resolve(process.env.GOOGLE_OAUTH_TOKEN_PATH);
-  }
-  const tokensDir = path.resolve(getWritableBaseDir(), "tokens");
-  if (!fs.existsSync(tokensDir)) {
-    fs.mkdirSync(tokensDir, { recursive: true });
-  }
-  const suffix = safeTokenSuffix(selectedFilename);
-  return path.join(tokensDir, `token${suffix}.json`);
-}
-
-function getRedirectUriFromEnvOrDefault() {
+function getRedirectUriFromEnvOrDefault(redirectUris?: string[]) {
   if (process.env.GOOGLE_REDIRECT_URI) return process.env.GOOGLE_REDIRECT_URI;
+  if (redirectUris && redirectUris.length > 0) return redirectUris[0];
   // Default for local dev (make sure this redirect URI is allowed in Google Cloud).
   return "http://localhost:3000/api/auth/callback";
 }
 
-function readClientSecrets(selectedFilename?: string): {
+function parseClientSecretsFromJson(raw: string, sourceLabel = "credentials JSON"): {
   clientId: string;
   clientSecret: string;
   redirectUris?: string[];
 } {
-  const credentialsPath = getCredentialsPath(selectedFilename);
-  const raw = fs.readFileSync(credentialsPath, "utf8");
   const parsed = JSON.parse(raw) as CredentialsFile;
 
   const block = parsed.installed ?? parsed.web;
   if (!block?.client_id || !block?.client_secret) {
     throw new Error(
-      `Invalid credentials file at ${credentialsPath}. Expected 'installed' or 'web' OAuth client.`,
+      `Invalid ${sourceLabel}. Expected 'installed' or 'web' OAuth client.`,
     );
   }
 
@@ -93,52 +44,41 @@ function readClientSecrets(selectedFilename?: string): {
 }
 
 export function createOAuthClient(selectedFilename?: string) {
-  const { clientId, clientSecret, redirectUris } = readClientSecrets(selectedFilename);
-  void redirectUris; // kept for debugging / future use
-  const redirectUri = getRedirectUriFromEnvOrDefault();
+  if (!process.env.GOOGLE_OAUTH_CREDENTIALS_JSON) {
+    throw new Error("Missing GOOGLE_OAUTH_CREDENTIALS_JSON.");
+  }
+  const { clientId, clientSecret, redirectUris } = parseClientSecretsFromJson(
+    process.env.GOOGLE_OAUTH_CREDENTIALS_JSON,
+    "GOOGLE_OAUTH_CREDENTIALS_JSON",
+  );
+  const redirectUri = getRedirectUriFromEnvOrDefault(redirectUris);
   return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 }
 
-export function getAuthUrl(selectedFilename?: string) {
-  const oauth2 = createOAuthClient(selectedFilename);
+export function createOAuthClientFromJson(raw: string) {
+  const { clientId, clientSecret, redirectUris } = parseClientSecretsFromJson(raw);
+  const redirectUri = getRedirectUriFromEnvOrDefault(redirectUris);
+  return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+}
+
+export function getAuthUrlFromJson(raw: string, state?: string) {
+  const oauth2 = createOAuthClientFromJson(raw);
   return oauth2.generateAuthUrl({
     access_type: "offline",
     scope: SCOPES,
     prompt: "consent",
+    ...(state ? { state } : {}),
   });
 }
 
-export function loadOAuthTokenIfExists(
-  oauth2: InstanceType<typeof google.auth.OAuth2>,
-  selectedFilename?: string,
-) {
-  const tokenPath = getTokenPath(selectedFilename);
-  if (!fs.existsSync(tokenPath)) return false;
-  const tokenJson = fs.readFileSync(tokenPath, "utf8");
-  oauth2.setCredentials(JSON.parse(tokenJson));
-  return true;
-}
-
-export async function exchangeCodeAndStoreToken(code: string, selectedFilename?: string) {
-  const oauth2 = createOAuthClient(selectedFilename);
+export async function exchangeCodeForTokenWithJson(code: string, raw: string) {
+  const oauth2 = createOAuthClientFromJson(raw);
   const { tokens } = await oauth2.getToken(code);
-  oauth2.setCredentials(tokens);
-
-  const tokenPath = getTokenPath(selectedFilename);
-  fs.writeFileSync(tokenPath, JSON.stringify(tokens, null, 2), "utf8");
   return tokens;
 }
 
-export function getAuthorizedGoogleAuthOrAuthUrl(selectedFilename?: string): {
-  auth?: InstanceType<typeof google.auth.OAuth2>;
-  authUrl?: string;
-} {
-  const oauth2 = createOAuthClient(selectedFilename);
-  const ok = loadOAuthTokenIfExists(oauth2, selectedFilename);
-  if (!ok) return { authUrl: getAuthUrl(selectedFilename) };
-  return { auth: oauth2 };
-}
-
-export function getTokenPathForCredential(selectedFilename?: string) {
-  return getTokenPath(selectedFilename);
+export function getAuthorizedGoogleAuthFromToken(token: Record<string, unknown>) {
+  const oauth2 = new google.auth.OAuth2();
+  oauth2.setCredentials(token);
+  return oauth2;
 }

@@ -7,7 +7,7 @@ import {
   startActorRun,
   waitForRunToFinish,
 } from "@/lib/apify";
-import { getAuthorizedGoogleAuthOrAuthUrl } from "@/lib/googleAuth";
+import { getAuthorizedGoogleAuthFromToken } from "@/lib/googleAuth";
 import { google, sheets_v4 } from "googleapis";
 import { getRow, rowToDict, setCell, appendRows } from "@/lib/sheets";
 import { clearRunStateOnDisk, loadRunStateFromDisk, runState, saveRunStateToDisk } from "../runState";
@@ -16,6 +16,7 @@ export const runtime = "nodejs";
 
 type StepBody = {
   runId?: string;
+  authToken?: Record<string, unknown>;
 };
 
 function getFromRowCaseInsensitive(row: Record<string, string>, headerName: string) {
@@ -260,21 +261,6 @@ function persistRunState() {
 
 export async function POST(req: Request) {
   try {
-    const cookieCred = req.headers.get("cookie") ?? "";
-    const match = cookieCred.match(/(?:^|; )google_cred=([^;]+)/);
-    const cred = match ? decodeURIComponent(match[1]) : undefined;
-    const { auth, authUrl } = getAuthorizedGoogleAuthOrAuthUrl(cred);
-    if (!auth) {
-      return NextResponse.json(
-        {
-          error: "not_authorized",
-          message: "Authorize Google Sheets access first.",
-          authUrl,
-        },
-        { status: 401 },
-      );
-    }
-
     if (!runState.currentRun) {
       const persisted = loadRunStateFromDisk();
       if (persisted) {
@@ -296,6 +282,14 @@ export async function POST(req: Request) {
     } catch {
       body = {};
     }
+
+    if (!body.authToken || typeof body.authToken !== "object") {
+      return NextResponse.json(
+        { error: "not_authorized", message: "Authorize Google Sheets access first." },
+        { status: 401 },
+      );
+    }
+    const auth = getAuthorizedGoogleAuthFromToken(body.authToken);
 
     if (body.runId && body.runId !== run.runId) {
       return NextResponse.json({ error: "run_mismatch", message: "Run id mismatch." }, { status: 400 });

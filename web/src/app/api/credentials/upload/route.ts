@@ -1,12 +1,22 @@
 import { NextResponse } from "next/server";
-import { promises as fs } from "fs";
-
-import { getCredentialsDirPath } from "@/lib/googleAuth";
-
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
+    void req;
+    return NextResponse.json(
+      { error: "deprecated", message: "Credential uploads are handled in the browser now." },
+      { status: 410 },
+    );
+  } catch (err) {
+    return NextResponse.json(
+      { error: "server_error", message: err instanceof Error ? err.message : String(err) },
+      { status: 500 },
+    );
+  }
+}
+
+/*
     const formData = await req.formData();
     const file = formData.get("file");
     if (!file || !(file instanceof File)) {
@@ -40,3 +50,4 @@ export async function POST(req: Request) {
     );
   }
 }
+*/

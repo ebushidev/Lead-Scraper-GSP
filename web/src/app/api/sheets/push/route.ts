@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { google, sheets_v4 } from "googleapis";
 
-import { getAuthorizedGoogleAuthOrAuthUrl } from "@/lib/googleAuth";
+import { getAuthorizedGoogleAuthFromToken } from "@/lib/googleAuth";
 import { DEFAULT_NICHE_SETTINGS_TAB, DEFAULT_SPREADSHEET_ID, appendRows, ensureHeader, getRow, setCell } from "@/lib/sheets";
 import { getDatasetItems } from "@/lib/apify";
 
@@ -14,6 +14,7 @@ type PushBody = {
   rowNumber: number;
   datasetUrl: string;
   pushedHeader?: string;
+  authToken?: Record<string, unknown>;
 };
 
 // header helpers are handled by ensureHeader
@@ -163,21 +164,6 @@ function parseDatasetUrl(datasetUrl: string): { datasetId: string; token: string
 
 export async function POST(req: Request) {
   try {
-    const cookieCred = req.headers.get("cookie") ?? "";
-    const match = cookieCred.match(/(?:^|; )google_cred=([^;]+)/);
-    const cred = match ? decodeURIComponent(match[1]) : undefined;
-    const { auth, authUrl } = getAuthorizedGoogleAuthOrAuthUrl(cred);
-    if (!auth) {
-      return NextResponse.json(
-        {
-          error: "not_authorized",
-          message: "Authorize Google Sheets access first.",
-          authUrl,
-        },
-        { status: 401 },
-      );
-    }
-
     const body = (await req.json()) as PushBody;
     const spreadsheetId = (body.spreadsheetId ?? DEFAULT_SPREADSHEET_ID).trim();
     const settingsSheetName = (body.settingsSheetName ?? DEFAULT_NICHE_SETTINGS_TAB).trim();
@@ -196,6 +182,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "invalid_dataset_url", message: "Dataset URL is invalid." }, { status: 400 });
     }
 
+    if (!body.authToken || typeof body.authToken !== "object") {
+      return NextResponse.json(
+        { error: "not_authorized", message: "Authorize Google Sheets access first." },
+        { status: 401 },
+      );
+    }
+    const auth = getAuthorizedGoogleAuthFromToken(body.authToken);
     const sheets: sheets_v4.Sheets = google.sheets({ version: "v4", auth });
     const leadsHeaders = await getRow(sheets, spreadsheetId, leadsSheetName, 1);
     if (!leadsHeaders.length) {

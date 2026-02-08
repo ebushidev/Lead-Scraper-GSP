@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { google } from "googleapis";
 
 import { DEFAULT_NICHE_SETTINGS_TAB, DEFAULT_SPREADSHEET_ID, getRow, getRows } from "@/lib/sheets";
-import { getAuthorizedGoogleAuthOrAuthUrl } from "@/lib/googleAuth";
+import { getAuthorizedGoogleAuthFromToken } from "@/lib/googleAuth";
 
 export const runtime = "nodejs";
 
@@ -13,6 +13,7 @@ type SettingsRowsBody = {
   datasetUrlHeader?: string;
   pushedHeader?: string;
   pushStatusHeader?: string;
+  authToken?: Record<string, unknown>;
 };
 
 function findHeaderIndexCaseInsensitive(headers: string[], headerName: string) {
@@ -25,27 +26,21 @@ function findHeaderIndexCaseInsensitive(headers: string[], headerName: string) {
 
 export async function POST(req: Request) {
   try {
-    const cookieCred = req.headers.get("cookie") ?? "";
-    const match = cookieCred.match(/(?:^|; )google_cred=([^;]+)/);
-    const cred = match ? decodeURIComponent(match[1]) : undefined;
-    const { auth, authUrl } = getAuthorizedGoogleAuthOrAuthUrl(cred);
-    if (!auth) {
-      return NextResponse.json(
-        {
-          error: "not_authorized",
-          message: "Authorize Google Sheets access first.",
-          authUrl,
-        },
-        { status: 401 },
-      );
-    }
-
     let body: SettingsRowsBody = {};
     try {
       body = (await req.json()) as SettingsRowsBody;
     } catch {
       body = {};
     }
+
+    const authToken = body.authToken;
+    if (!authToken || typeof authToken !== "object") {
+      return NextResponse.json(
+        { error: "not_authorized", message: "Authorize Google Sheets access first." },
+        { status: 401 },
+      );
+    }
+    const auth = getAuthorizedGoogleAuthFromToken(authToken as Record<string, unknown>);
 
     const spreadsheetId = (body.spreadsheetId ?? DEFAULT_SPREADSHEET_ID).trim();
     const sheetName = (body.sheetName ?? DEFAULT_NICHE_SETTINGS_TAB).trim();

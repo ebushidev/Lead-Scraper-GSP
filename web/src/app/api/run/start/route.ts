@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 
-import { getAuthorizedGoogleAuthOrAuthUrl } from "@/lib/googleAuth";
+import { getAuthorizedGoogleAuthFromToken } from "@/lib/googleAuth";
 import { google, sheets_v4 } from "googleapis";
 import {
   DEFAULT_NICHE_SETTINGS_TAB,
@@ -24,6 +24,7 @@ type RunBody = {
   apifyTokenHeader?: string;
   startRow?: number;
   endRow?: number;
+  authToken?: Record<string, unknown>;
 };
 
 function findHeaderIndexCaseInsensitive(headers: string[], headerName: string) {
@@ -59,27 +60,20 @@ function fmtDateTime(d: Date) {
 
 export async function POST(req: Request) {
   try {
-    const cookieCred = req.headers.get("cookie") ?? "";
-    const match = cookieCred.match(/(?:^|; )google_cred=([^;]+)/);
-    const cred = match ? decodeURIComponent(match[1]) : undefined;
-    const { auth, authUrl } = getAuthorizedGoogleAuthOrAuthUrl(cred);
-    if (!auth) {
-      return NextResponse.json(
-        {
-          error: "not_authorized",
-          message: "Authorize Google Sheets access first.",
-          authUrl,
-        },
-        { status: 401 },
-      );
-    }
-
     let body: RunBody = {};
     try {
       body = (await req.json()) as RunBody;
     } catch {
       body = {};
     }
+
+    if (!body.authToken || typeof body.authToken !== "object") {
+      return NextResponse.json(
+        { error: "not_authorized", message: "Authorize Google Sheets access first." },
+        { status: 401 },
+      );
+    }
+    const auth = getAuthorizedGoogleAuthFromToken(body.authToken);
 
     const spreadsheetId = (body.spreadsheetId ?? process.env.SPREADSHEET_ID ?? DEFAULT_SPREADSHEET_ID).trim();
     const settingsSheetName = (

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getAuthorizedGoogleAuthOrAuthUrl } from "@/lib/googleAuth";
+import { getAuthorizedGoogleAuthFromToken } from "@/lib/googleAuth";
 import { DEFAULT_SPREADSHEET_ID } from "@/lib/sheets";
 import { google } from "googleapis";
 
@@ -8,27 +8,22 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
-    const cookieCred = req.headers.get("cookie") ?? "";
-    const match = cookieCred.match(/(?:^|; )google_cred=([^;]+)/);
-    const cred = match ? decodeURIComponent(match[1]) : undefined;
-    const { auth, authUrl } = getAuthorizedGoogleAuthOrAuthUrl(cred);
-    if (!auth) {
-      return NextResponse.json(
-        {
-          error: "not_authorized",
-          message: "Authorize Google Sheets access first.",
-          authUrl,
-        },
-        { status: 401 },
-      );
-    }
-
     let body: unknown = null;
     try {
       body = await req.json();
     } catch {
       body = null;
     }
+
+    const authToken =
+      typeof body === "object" && body !== null && "authToken" in body ? (body as { authToken?: unknown }).authToken : null;
+    if (!authToken || typeof authToken !== "object") {
+      return NextResponse.json(
+        { error: "not_authorized", message: "Authorize Google Sheets access first." },
+        { status: 401 },
+      );
+    }
+    const auth = getAuthorizedGoogleAuthFromToken(authToken as Record<string, unknown>);
 
     const spreadsheetId =
       (typeof body === "object" &&

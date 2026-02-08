@@ -1,15 +1,31 @@
 import { NextResponse } from "next/server";
 
-import { getAuthUrl } from "@/lib/googleAuth";
+import { getAuthUrlFromJson } from "@/lib/googleAuth";
 
-export async function GET(req: Request) {
-  const urlObj = new URL(req.url);
-  const cred = urlObj.searchParams.get("cred")?.trim() || undefined;
-  const url = getAuthUrl(cred);
-  const res = NextResponse.redirect(url);
-  if (cred) {
-    res.cookies.set("google_cred", cred, { httpOnly: true, sameSite: "lax", path: "/" });
+type AuthStartBody = {
+  credentialsJson?: string;
+  credentialName?: string;
+};
+
+export async function POST(req: Request) {
+  try {
+    const body = (await req.json()) as AuthStartBody;
+    const credentialsJson = (body.credentialsJson ?? "").trim();
+    if (!credentialsJson) {
+      return NextResponse.json({ error: "missing_credentials", message: "Missing credentials JSON." }, { status: 400 });
+    }
+    const payload = {
+      credentialsJson,
+      credentialName: body.credentialName ?? "",
+    };
+    const state = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+    const authUrl = getAuthUrlFromJson(credentialsJson, state);
+    return NextResponse.json({ ok: true, authUrl });
+  } catch (err) {
+    return NextResponse.json(
+      { error: "server_error", message: err instanceof Error ? err.message : String(err) },
+      { status: 500 },
+    );
   }
-  return res;
 }
 

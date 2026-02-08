@@ -1,21 +1,12 @@
 import { NextResponse } from "next/server";
-import { promises as fs } from "fs";
-
-import { getCredentialsDirPath } from "@/lib/googleAuth";
-
 export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    let files: string[] = [];
-    try {
-      const entries = await fs.readdir(getCredentialsDirPath(), { withFileTypes: true });
-      files = entries.filter((e) => e.isFile() && e.name.endsWith(".json")).map((e) => e.name);
-    } catch {
-      files = [];
-    }
-
-    return NextResponse.json({ ok: true, files });
+    return NextResponse.json(
+      { error: "deprecated", message: "Credential listing is handled in the browser now." },
+      { status: 410 },
+    );
   } catch (err) {
     return NextResponse.json(
       { error: "server_error", message: err instanceof Error ? err.message : String(err) },
