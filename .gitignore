@@ -1,6 +1,6 @@
 token*
-tokens/
-credentials/
+tokens/*
+credentials/*
 
 web/node_modules/
 web/.next/
