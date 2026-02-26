@@ -53,6 +53,9 @@ type PersistedRunProgress = Omit<RunProgress, "existingUniqueIds"> & { existingU
 type PersistedRunState = Omit<RunState, "currentRun"> & { currentRun: PersistedRunProgress | null };
 
 function getRunStatePath() {
+  if (process.env.VERCEL) {
+    return path.resolve("/tmp", ".run-state.json");
+  }
   return path.resolve(process.cwd(), ".run-state.json");
 }
 
